@@ -1,0 +1,41 @@
+{
+  "name": "lago-pulumi-example",
+  "type": "module",
+  "volta": {
+    "node": "16.16.0",
+    "yarn": "1.22.17"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "prettier": "@cobraz/prettier",
+  "eslintConfig": {
+    "extends": "@bjerk/eslint-config",
+    "rules": {
+      "import/no-unassigned-import": "off"
+    }
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "jest --coverage src/**/*"
+  },
+  "dependencies": {
+    "@pulumi/kubernetes": "^3.20.2",
+    "@pulumi/pulumi": "^3.37.2"
+  },
+  "devDependencies": {
+    "@bjerk/eslint-config": "^2.0.1",
+    "@cobraz/prettier": "^2.0.0",
+    "@tsconfig/node16-strictest-esm": "^1.0.0",
+    "@types/jest": "^28.1.5",
+    "@types/node": "16",
+    "dotenv-load": "^2.0.1",
+    "jest": "^28.1.3",
+    "nodemon": "^2.0.19",
+    "prettier": "^2.5.1",
+    "ts-jest": "^28.0.6",
+    "ts-node": "^10.9.1",
+    "typescript": "^4.7.4"
+  },
+  "license": "Apache-2.0"
+}

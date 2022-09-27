@@ -1,0 +1,16 @@
+{
+  "ts-node": {
+    "files": true,
+    "esm": true
+  },
+  "extends": "@tsconfig/node16-strictest-esm/tsconfig.json",
+  "compilerOptions": {
+    "module": "node16",
+    "moduleResolution": "node",
+    "exactOptionalPropertyTypes": false,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "out"
+  },
+  "include": ["src/**/*.ts"]
+}
