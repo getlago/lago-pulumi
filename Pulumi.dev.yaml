@@ -1,0 +1,4 @@
+config:
+  aws:region: us-east-1
+  lago-pulumi:dbPassword:
+    secure: AAABAMvI4GArE8umOK/m/OP+W66t/w6dZLvJ0HADVB07Ak+yEVdhzw==
