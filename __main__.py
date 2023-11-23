@@ -1,80 +1,91 @@
-"""An AWS Python Pulumi program"""
+"""
+Deploys:
+- Network: VPC, Subnets, Security Groups
+- DB Backend: PostgreSQL RDS, Redis
+"""
 
 import pulumi
-import pulumi_aws as aws
+import pulumi_random as random
+import network
+import database
+import cluster
+import frontend
+import backend
 
 config = pulumi.Config()
+service_name = config.get('service_name') or 'lago'
+lago_version = config.get('lago_version')
+db_name = config.get('db_name') or 'lago'
+db_user = config.get('db_user') or 'lago'
 
-# Create a new Lago VPC
-vpc = aws.ec2.Vpc("lago_vpc", cidr_block="172.42.0.0/16")
+db_password = config.get_secret('db_password')
+if not db_password:
+  password = random.RandomPassword('db_password',
+    length=16,
+    special=True,
+    override_special='_%',
+  )
+  db_password = password.result
 
-vpc_sg = aws.ec2.SecurityGroup(
-  "lago_security_group",
-  description="Lago Security Group",
-  vpc_id=vpc.id,
-  ingress=[
-    aws.ec2.SecurityGroupIngressArgs(
-      description="allow HTTP",
-      from_port=80,
-      to_port=80,
-      protocol="tcp",
-      cidr_blocks=["0.0.0.0/0"],
-    ),
-    aws.ec2.SecurityGroupIngressArgs(
-      description= "allow HTTPS",
-      from_port=443,
-      to_port=443,
-      protocol="tcp",
-      cidr_blocks=["0.0.0.0/0"],
-    ),
-    aws.ec2.SecurityGroupIngressArgs(
-      description="allow POSTGRESQL",
-      from_port=5432,
-      to_port=5432,
-      protocol="tcp",
-      cidr_blocks=["172.42.0.0/16"],
-    ),
-    aws.ec2.SecurityGroupIngressArgs(
-      description="allow REDIS",
-      from_port=6379,
-      to_port=6379,
-      protocol="tcp",
-      cidr_blocks=["172.42.0.0/16"],
-    ),
-  ],
-  egress=[
-    aws.ec2.SecurityGroupEgressArgs(
-      from_port=0,
-      to_port=0,
-      protocol="-1",
-      cidr_blocks=["0.0.0.0/0"],
-    ),
-  ],
-  tags={
-    "Name": "lago_security_group",
-  },
+# Create an AWS VPC with Subnets and Security Groups
+network = network.Vpc(f'{service_name}-net', network.VpcArgs())
+subnet_ids = []
+for subnet in network.subnets:
+  subnet_ids.append(subnet.id)
+
+# Create an RDS PostgreSQL instance
+db = database.Db(f'{service_name}-db',
+  database.DbArgs(
+    db_name=db_name,
+    db_user=db_user,
+    db_password=db_password,
+    subnet_ids=subnet_ids,
+    security_group_ids=[network.rds_security_group.id],
+  ),
 )
 
-# Create a PostgreSQL RDS Instance
-# db_subnet = aws.rds.SubnetGroup(
-#   "lago_rds_subnet",
-#   subnet_ids=vpc.private_subnet_ids,
-# )
+# Create a Elasticache Redis instance
+redis = database.Redis(f'{service_name}-redis',
+  database.RedisArgs(
+    redis_name=db_name,
+    subnet_ids=subnet_ids,
+    security_group_ids=[network.redis_security_group.id],
+  ),
+)
 
-# db = aws.rds.Instance(
-#   "lago-database",
-#   allocated_storage=10,
-#   db_name="lago",
-#   db_subnet_group_name=db_subnet.name,
-#   engine="postgresql",
-#   engine_version="14.7",
-#   instance_class="db.t4g.micro",
-#   parameter_group_name="default.postgres14",
-#   storage_type="gp2",
-#   username="lago",
-#   password=config.require_secret('dbPassword'),
-#   skip_final_snapshot=True,
-#   vpc_security_group_ids=[vpc_sg.id],
-# )
+# Create ECS Cluster
+cluster = cluster.Cluster(f'{service_name}-ecs')
 
-# pulumi.export(db.address)
+# Create Backend
+backend = backend.Backend(f'{service_name}-be', backend.BackendArgs(
+  cluster_arn=cluster.cluster.arn,
+  role_arn=cluster.role.arn,
+  lago_version=lago_version,
+  vpc_id=network.vpc.id,
+  subnet_ids=subnet_ids,
+  security_group_ids=[network.redis_security_group.id],
+  db_host=db.db.address,
+  db_name=db_name,
+  db_user=db_user,
+  db_password=db_password,
+  redis_host=redis.redis.cache_nodes[0].address,
+))
+
+# Create Frontend
+front = frontend.Frontend(f'{service_name}-front', frontend.FrontendArgs(
+  cluster_arn=cluster.cluster.arn,
+  role_arn=cluster.role.arn,
+  lago_version=lago_version,
+  vpc_id=network.vpc.id,
+  subnet_ids=subnet_ids,
+  security_group_ids=[network.app_security_group.id],
+))
+
+front_url = pulumi.Output.concat('http://', front.alb.dns_name)
+api_url = pulumi.Output.concat('http://', backend.alb.dns_name)
+
+pulumi.export('Lago Front URL', front_url)
+pulumi.export('Lago API URL', api_url)
+pulumi.export('ECS Cluster Name', cluster.cluster.name)
+pulumi.export('Lago Version', lago_version)
+pulumi.export('Service Name', service_name)

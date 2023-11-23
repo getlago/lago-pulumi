@@ -1,4 +1,6 @@
 config:
   aws:region: us-east-1
-  lago-pulumi:dbPassword:
-    secure: AAABAMvI4GArE8umOK/m/OP+W66t/w6dZLvJ0HADVB07Ak+yEVdhzw==
+  lago-pulumi:db_password:
+    secure: AAABALwO111BjjVj/NDAmBClw5YS3YffVquJwvgGrT5rYDIzFmiNUg==
+  lago-pulumi:lago_version: 0.52.0-beta
+  lago-pulumi:service_name: lago
