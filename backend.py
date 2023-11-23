@@ -17,12 +17,12 @@ class BackendArgs:
                subnet_ids=None,
                security_group_ids=None,
                db_host=None,
-               db_port=5432,
+               db_port='5432',
                db_name=None,
                db_user=None,
                db_password=None,
                redis_host=None,
-               redis_port=6379,
+               redis_port='6379',
               ):
     self.lago_version = lago_version
     self.cluster_arn = cluster_arn
@@ -62,6 +62,7 @@ class Backend(ComponentResource):
       vpc_id=args.vpc_id,
       health_check=lb.TargetGroupHealthCheckArgs(
         path='/health',
+        port=3000,
         healthy_threshold=2,
         interval=5,
         timeout=4,
@@ -81,9 +82,26 @@ class Backend(ComponentResource):
       )],
       opts=ResourceOptions(parent=self),
     )
+    
+    database_url = Output.concat(
+      'postgres://',
+      args.db_user,
+      ':',
+      args.db_password,
+      '@',
+      args.db_host,
+      ':',
+      args.db_port,
+      '/',
+      args.db_name,
+    )
 
-    database_url = f'postgres://{args.db_user}:{args.db_password}@{args.db_host}:{args.db_port}/{args.db_name}'
-    redis_url = f'redis://{args.redis_host}:{args.redis_port}'
+    redis_url = Output.concat(
+      'redis://',
+      args.redis_host,
+      ':',
+      args.redis_port,
+    )
 
     rsa_private_key = tls.PrivateKey(f'{name}-private-key',
       algorithm='RSA',
@@ -91,21 +109,19 @@ class Backend(ComponentResource):
     secret_key_base = random.RandomString(f'{name}-secret-key-base',
       length=64,
       special=False,
-    ).result.apply(lambda key: base64.b64encode(key.encode()))
+    ).result.apply(lambda key: base64.b64encode(key.encode()).decode())
     encryption_deterministic_key = random.RandomString(f'{name}-encryption-deterministic-key',
       length=32,
       special=False,
-    ).result.apply(lambda key: base64.b64encode(key.encode()))
+    ).result.apply(lambda key: base64.b64encode(key.encode()).decode())
     encryption_key_derivation_salt = random.RandomString(f'{name}-encryption-key-derivation-salt',
       length=32,
       special=False,
-    ).result.apply(lambda key: base64.b64encode(key.encode()))
+    ).result.apply(lambda key: base64.b64encode(key.encode()).decode())
     encryption_primary_key = random.RandomString(f'{name}-encryption-primary-key',
       length=32,
       special=False,
-    ).result.apply(lambda key: base64.b64encode(key.encode()))
-
-    pulumi.export('TEST', rsa_private_key)
+    ).result.apply(lambda key: base64.b64encode(key.encode()).decode())
 
     # Create the API ECS Task Definition
     api_task_name = f'{name}-api-task'
@@ -155,6 +171,22 @@ class Backend(ComponentResource):
             'value': rsa_private_key,
           },
           {
+            'name': 'SECRET_KEY_BASE',
+            'value': secret_key_base,
+          },
+          {
+            'name': 'ENCRYPTION_DETERMINISTIC_KEY',
+            'value': encryption_deterministic_key,
+          },
+          {
+            'name': 'ENCRYPTION_KEY_DERIVATION_SALT',
+            'value': encryption_key_derivation_salt,
+          },
+          {
+            'name': 'ENCRYPTION_PRIMARY_KEY',
+            'value': encryption_primary_key,
+          },
+          {
             'name': 'LAGO_DISABLE_SEGMENT',
             'value': 'true',
           },
@@ -184,7 +216,7 @@ class Backend(ComponentResource):
           },
           {
             'name': 'LAGO_USE_AWS_S3',
-            'value': 'false',
+            'value': 'true',
           },
         ],
       }]),
@@ -192,22 +224,22 @@ class Backend(ComponentResource):
     )
 
     # Create the API ECS Service
-    # self.api_service = ecs.Service(f'{name}-api-svc',
-    #   cluster=args.cluster_arn,
-    #   desired_count=1,
-    #   launch_type='FARGATE',
-    #   task_definition=self.api_task_definition.arn,
-    #   network_configuration=ecs.ServiceNetworkConfigurationArgs(
-    #     assign_public_ip=True,
-    #     subnets=args.subnet_ids,
-    #     security_groups=args.security_group_ids,
-    #   ),
-    #   load_balancers=[ecs.ServiceLoadBalancerArgs(
-    #     target_group_arn=api_target_group.arn,
-    #     container_name=api_container_name,
-    #     container_port=3000,
-    #   )],
-    #   opts=ResourceOptions(depends_on=[api_listener], parent=self),
-    # )
+    self.api_service = ecs.Service(f'{name}-api-svc',
+      cluster=args.cluster_arn,
+      desired_count=1,
+      launch_type='FARGATE',
+      task_definition=self.api_task_definition.arn,
+      network_configuration=ecs.ServiceNetworkConfigurationArgs(
+        assign_public_ip=True,
+        subnets=args.subnet_ids,
+        security_groups=args.security_group_ids,
+      ),
+      load_balancers=[ecs.ServiceLoadBalancerArgs(
+        target_group_arn=api_target_group.arn,
+        container_name=api_container_name,
+        container_port=3000,
+      )],
+      opts=ResourceOptions(depends_on=[api_listener], parent=self),
+    )
 
     self.register_outputs({})
